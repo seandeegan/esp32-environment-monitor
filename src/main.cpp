@@ -4,7 +4,7 @@
 #include <SPI.h>
 #include <DHT.h>
 
-
+// pin definitions
 #define DHTPIN 27     // Digital pin connected to the DHT sensor
 #define DHTTYPE DHT22   // DHT 22 (AM2302)
 
@@ -13,20 +13,89 @@
 #define TOUCH_CS    33
 #define TOUCH_CLK   25
 
-TFT_Touch touch(TOUCH_CS, TOUCH_CLK, TOUCH_DIN, TOUCH_DOUT);
 
 
+  // Hardware objects
 DHT dht(DHTPIN, DHTTYPE);
 
-TFT_eSPI my_lcd;       // Invoke custom library
+TFT_eSPI lcdDisplay;       // Invoke lcd library
+
+TFT_Touch touch(
+  TOUCH_CS, 
+  TOUCH_CLK, 
+  TOUCH_DIN, 
+  TOUCH_DOUT
+);
+
 TFT_eSPI_Button btn; // invoke button helper 
 
 
+// sensor data 
+float humidity;
+float temperature;
+
+// timing
+unsigned long previousSensorTime= 0;
+const unsigned long sensorInterval = 2000;
+
+unsigned long lastButtonPressTime = 0;
+const unsigned long buttonInterval = 350;
+
+
+
+// celsius conversion
 float celsiusToFahrenheit(float celsius) {
   return( celsius * 1.8 + 32);
 }
 
+
+
+// sensor reading state
 bool isFahrenheit = true; // Flag to indicate if the temperature is in Fahrenheit
+
+
+void readSensor(){
+   float newHumidity = dht.readHumidity();
+  float newTemperature = dht.readTemperature();
+
+  // sensor failure check
+  if (isnan(newTemperature) || isnan(newHumidity)){
+    Serial.println("Sensor Reading Failed, check humidity or temp value");
+  } else {
+    humidity = newHumidity;
+    temperature = newTemperature;
+  }
+}
+  
+ int tlabelWidth;
+ 
+
+void updateDisplay(){
+  // Temperature
+  lcdDisplay.setCursor(tlabelWidth + 10, 20);
+  
+
+
+
+    if (isFahrenheit) {
+    lcdDisplay.print(celsiusToFahrenheit(temperature));
+   
+    lcdDisplay.print("F");
+  } else {
+    lcdDisplay.print(temperature);
+   
+    lcdDisplay.print("C");
+  }
+
+
+  // Humidity
+  lcdDisplay.setCursor(tlabelWidth + 10, 40);
+
+  lcdDisplay.print(humidity);
+
+  lcdDisplay.print("%");
+
+}
 
 void setup() {
   // put your setup code here, to run once:
@@ -34,65 +103,88 @@ void setup() {
   dht.begin();
 
 
+// init screen and set rot
+  lcdDisplay.init();
+  lcdDisplay.setRotation(0);
 
-  my_lcd.init();
-  my_lcd.setRotation(0);
-
-  my_lcd.fillScreen(TFT_BLACK);
-  my_lcd.setTextColor(TFT_GREEN, TFT_BLACK);
-  my_lcd.setTextSize(2);
+  // screen color black
+  lcdDisplay.fillScreen(TFT_BLACK);
+ 
 
   touch.setCal(3800, 500, 230, 3670, 240, 320, 0); // Set calibration values for the touch screen
 
-  btn.initButton(&my_lcd, 50, 100, 100, 40, TFT_WHITE, TFT_BLUE, TFT_WHITE, "Click", 2);
+  // initialize button with settings and draw
+  btn.initButton(&lcdDisplay, 50, 100, 100, 40, TFT_WHITE, TFT_BLUE, TFT_WHITE, "F/C", 2);
   btn.drawButton();
 
 
- // my_lcd.setCursor(50, 100);
-  //my_lcd.print("Hello, World!");
-
-  
-
+  // text color and size
+   lcdDisplay.setTextColor(TFT_GREEN, TFT_BLACK);
+  lcdDisplay.setTextSize(2);
 
 
-  int testWidth = my_lcd.width();
-  int testHeight = my_lcd.height();
+  int testWidth = lcdDisplay.width();
+  int testHeight = lcdDisplay.height();
 
   Serial.print("Width: ");
   Serial.println(testWidth);
   Serial.print("Height: ");
   Serial.println(testHeight);
+
+
+  lcdDisplay.setCursor(0, 20);
+  
+   lcdDisplay.print("Temperature: ");
+  
+  lcdDisplay.setCursor(0, 40);
+  
+     lcdDisplay.print("Humidity: ");
+
+  
+
+ 
+ tlabelWidth = lcdDisplay.textWidth("Temperature: ");
+  
+
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  float humidity = dht.readHumidity();
-  float temperature = dht.readTemperature();
+  
+  // Store current time in milliseconds.
+  unsigned long currentTime = millis();
 
-  my_lcd.setCursor(0, 20);
-  my_lcd.print("Humidity: ");
-  my_lcd.print(humidity);
-  my_lcd.print("%");
-  
-  my_lcd.setCursor(0, 40);
-  my_lcd.print("Temperature: ");
-  
-  if (isFahrenheit) {
-    my_lcd.print(celsiusToFahrenheit(temperature));
-    my_lcd.print("F");
-  } else {
-    my_lcd.print(temperature);
-    my_lcd.print("C");
-  }
+if ( currentTime - previousSensorTime >= sensorInterval) {
+
+
+  previousSensorTime = currentTime;
+
+  readSensor();
+
+}
+
+updateDisplay();
+
+
 
     if (touch.Pressed()){
-      Serial.println("Touch detected!");
-      Serial.print(touch.X());
-      Serial.print(", ");
-      Serial.println(touch.Y());
+      int x = touch.X();
+      int y = touch.Y();
 
+
+      btn.press(btn.contains(x, y));
+    } else {
+      btn.press(false);
     }
 
-  delay(2000); // Delay for 2 seconds before the next reading
-}
+      if (btn.justPressed()){
+        if (currentTime - lastButtonPressTime >= buttonInterval){
+        lastButtonPressTime = currentTime;
+
+        isFahrenheit = !isFahrenheit;
+      }
+    }
+  }
+
+
 

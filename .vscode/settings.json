@@ -1,0 +1,13 @@
+{"editor.quickSuggestions": true,
+"editor.suggestOnTriggerCharacters": true,
+
+"editor.inlineSuggest.enabled": false,
+"editor.wordBasedSuggestions": "off",
+
+"editor.parameterHints.enabled": true,
+
+"editor.snippetSuggestions": "none",
+
+"editor.suggest.showFunctions": true,
+"editor.suggest.showMethods": true
+}
