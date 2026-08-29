@@ -3,6 +3,9 @@
 #include <TFT_Touch.h>
 #include <SPI.h>
 #include <DHT.h>
+#include <vector>
+#include <numeric>
+
 
 // pin definitions
 #define DHTPIN 27     // Digital pin connected to the DHT sensor
@@ -33,13 +36,24 @@ TFT_eSPI_Button btn; // invoke button helper
 // sensor data 
 float humidity;
 float temperature;
+float avgTemperature;
 
 // timing
 unsigned long previousSensorTime= 0;
-const unsigned long sensorInterval = 2000;
+const unsigned long sensorInterval = 10000;
 
 unsigned long lastButtonPressTime = 0;
 const unsigned long buttonInterval = 350;
+
+unsigned long previousAvgTime = 0;
+const unsigned long avgInterval = 30000;
+
+
+
+
+
+// temp storage
+std::vector<float> latestTemps;
 
 
 
@@ -53,6 +67,10 @@ float celsiusToFahrenheit(float celsius) {
 // sensor reading state
 bool isFahrenheit = true; // Flag to indicate if the temperature is in Fahrenheit
 
+bool hasSensorReading = false;
+
+bool hasAverageReading = false;
+
 
 void readSensor(){
    float newHumidity = dht.readHumidity();
@@ -61,41 +79,107 @@ void readSensor(){
   // sensor failure check
   if (isnan(newTemperature) || isnan(newHumidity)){
     Serial.println("Sensor Reading Failed, check humidity or temp value");
+    hasSensorReading = false;
   } else {
     humidity = newHumidity;
     temperature = newTemperature;
+    latestTemps.push_back(newTemperature);
+    hasSensorReading = true;
+    
+    }
   }
-}
+
   
  int tlabelWidth;
  
 
 void updateDisplay(){
-  // Temperature
+  if (!hasSensorReading){
+    // Temperature
   lcdDisplay.setCursor(tlabelWidth + 10, 20);
-  
-
-
-
-    if (isFahrenheit) {
-    lcdDisplay.print(celsiusToFahrenheit(temperature));
-   
-    lcdDisplay.print("F");
-  } else {
-    lcdDisplay.print(temperature);
-   
-    lcdDisplay.print("C");
-  }
-
+  lcdDisplay.print("--");
 
   // Humidity
   lcdDisplay.setCursor(tlabelWidth + 10, 40);
 
-  lcdDisplay.print(humidity);
+  lcdDisplay.print("--");
 
-  lcdDisplay.print("%");
+  
+
+  }
+    else {
+    
+    
+    // Temperature
+    lcdDisplay.setCursor(tlabelWidth + 10, 20);
+    
+
+
+
+      if (isFahrenheit) {
+      lcdDisplay.print(celsiusToFahrenheit(temperature));
+    
+      lcdDisplay.print("F");
+    } else {
+      lcdDisplay.print(temperature);
+    
+      lcdDisplay.print("C");
+    }
+
+
+    // Humidity
+    lcdDisplay.setCursor(tlabelWidth + 10, 40);
+
+    lcdDisplay.print(humidity);
+
+    lcdDisplay.print("%");
+
+
+  }
+
+        if (!hasAverageReading){
+          // avgtemp
+        lcdDisplay.setCursor(tlabelWidth + 10, 80);
+        lcdDisplay.print("--");
+        } 
+        else {
+              //Avg temp
+          lcdDisplay.setCursor(tlabelWidth + 10, 80);
+          
+
+              if (isFahrenheit) {
+            lcdDisplay.print(celsiusToFahrenheit(avgTemperature));
+          
+            lcdDisplay.print("F");
+          } else {
+            lcdDisplay.print(avgTemperature);
+          
+            lcdDisplay.print("C");
+          }
+        }
 
 }
+
+void averageTemp(){
+
+  if (latestTemps.empty()){
+    hasAverageReading = false;
+      return;
+  }
+    else {
+
+  float sum = std::accumulate(latestTemps.begin(), latestTemps.end(), 0.0f);
+
+  float avg = sum / latestTemps.size();
+
+    avgTemperature = avg;
+    hasAverageReading = true;
+    
+    }
+  }
+
+
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -114,7 +198,7 @@ void setup() {
   touch.setCal(3800, 500, 230, 3670, 240, 320, 0); // Set calibration values for the touch screen
 
   // initialize button with settings and draw
-  btn.initButton(&lcdDisplay, 50, 100, 100, 40, TFT_WHITE, TFT_BLUE, TFT_WHITE, "F/C", 2);
+  btn.initButton(&lcdDisplay, 50, 200, 100, 40, TFT_WHITE, TFT_BLUE, TFT_WHITE, "F/C", 2);
   btn.drawButton();
 
 
@@ -140,6 +224,10 @@ void setup() {
   
      lcdDisplay.print("Humidity: ");
 
+
+  lcdDisplay.setCursor(0, 80);
+    lcdDisplay.print("Average Temp: ");
+
   
 
  
@@ -162,6 +250,16 @@ if ( currentTime - previousSensorTime >= sensorInterval) {
   readSensor();
 
 }
+
+if (currentTime - previousAvgTime >= avgInterval){
+  previousAvgTime = currentTime;
+
+
+  
+averageTemp();
+  }
+
+
 
 updateDisplay();
 
