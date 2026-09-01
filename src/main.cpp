@@ -5,6 +5,7 @@
 #include <DHT.h>
 #include <vector>
 #include <numeric>
+#include "wifi_manager.h"
 
 
 // pin definitions
@@ -37,6 +38,7 @@ TFT_eSPI_Button btn; // invoke button helper
 float humidity;
 float temperature;
 float avgTemperature;
+
 
 // timing
 unsigned long previousSensorTime= 0;
@@ -185,6 +187,7 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
   dht.begin();
+  initWiFi();
 
 
 // init screen and set rot
