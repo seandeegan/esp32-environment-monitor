@@ -3,8 +3,6 @@
 #include <TFT_Touch.h>
 #include <SPI.h>
 #include <DHT.h>
-#include <vector>
-#include <numeric>
 #include "wifi_manager.h"
 
 
@@ -40,6 +38,17 @@ float temperature;
 float avgTemperature;
 
 
+// array variables / temperature storage
+constexpr std::size_t bufferCapacity = 50;
+float temperatureArr[bufferCapacity];
+int buffWrite = 0;
+
+int realReadings = 0;
+
+
+
+
+
 // timing
 unsigned long previousSensorTime= 0;
 const unsigned long sensorInterval = 10000;
@@ -54,8 +63,7 @@ const unsigned long avgInterval = 30000;
 
 
 
-// temp storage
-std::vector<float> latestTemps;
+
 
 
 
@@ -76,7 +84,7 @@ bool hasAverageReading = false;
 
 void readSensor(){
    float newHumidity = dht.readHumidity();
-  float newTemperature = dht.readTemperature();
+   float newTemperature = dht.readTemperature();
 
   // sensor failure check
   if (isnan(newTemperature) || isnan(newHumidity)){
@@ -85,8 +93,15 @@ void readSensor(){
   } else {
     humidity = newHumidity;
     temperature = newTemperature;
-    latestTemps.push_back(newTemperature);
+   
+    
+    temperatureArr[buffWrite] = newTemperature;
+    buffWrite = (buffWrite + 1) % bufferCapacity;
     hasSensorReading = true;
+
+    if (realReadings < bufferCapacity){
+      realReadings++;
+    }
     
     }
   }
@@ -164,15 +179,19 @@ void updateDisplay(){
 
 void averageTemp(){
 
-  if (latestTemps.empty()){
+  if (realReadings == 0){
     hasAverageReading = false;
       return;
   }
     else {
 
-  float sum = std::accumulate(latestTemps.begin(), latestTemps.end(), 0.0f);
+  float sum = 0;
 
-  float avg = sum / latestTemps.size();
+  for (int i = 0; i < realReadings; ++i){
+    sum = sum + temperatureArr[i];
+  }
+
+  float avg = sum / realReadings;
 
     avgTemperature = avg;
     hasAverageReading = true;
