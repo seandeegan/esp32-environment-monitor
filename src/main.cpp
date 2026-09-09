@@ -4,6 +4,7 @@
 #include <SPI.h>
 #include <DHT.h>
 #include "wifi_manager.h"
+#include "api_server.h"
 
 
 // pin definitions
@@ -81,6 +82,17 @@ bool hasSensorReading = false;
 
 bool hasAverageReading = false;
 
+float getTemperature(){
+  return hasSensorReading ? temperature : NAN;
+}
+
+float getHumidity(){
+  return hasSensorReading ? humidity : NAN;
+}
+
+float getAverageTemp(){
+  return hasAverageReading ? avgTemperature : NAN;
+}
 
 void readSensor(){
    float newHumidity = dht.readHumidity();
@@ -207,6 +219,7 @@ void setup() {
   Serial.begin(9600);
   dht.begin();
   initWiFi();
+  initRestAPI();
 
 
 // init screen and set rot
@@ -259,6 +272,7 @@ void setup() {
 }
 
 void loop() {
+  handleRestAPI();
   // put your main code here, to run repeatedly:
   
   // Store current time in milliseconds.
