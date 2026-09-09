@@ -1,324 +1,119 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <TFT_Touch.h>
-#include <SPI.h>
-#include <DHT.h>
-#include "wifi_manager.h"
+#include <math.h>
+
 #include "api_server.h"
+#include "sensor_manager.h"
+#include "wifi_manager.h"
 
+namespace {
+constexpr int touchDataOutPin = 39;
+constexpr int touchDataInPin = 32;
+constexpr int touchChipSelectPin = 33;
+constexpr int touchClockPin = 25;
+constexpr unsigned long buttonDebounceMs = 350;
+constexpr int valueColumnX = 120;
+constexpr int valueRowHeight = 16;
 
-// pin definitions
-#define DHTPIN 27     // Digital pin connected to the DHT sensor
-#define DHTTYPE DHT22   // DHT 22 (AM2302)
+TFT_eSPI display;
+TFT_Touch touch(touchChipSelectPin, touchClockPin, touchDataInPin, touchDataOutPin);
+TFT_eSPI_Button unitButton;
+char unitButtonLabel[] = "F/C";
+bool displayFahrenheit = true;
+unsigned long lastButtonPressMs = 0;
 
-#define TOUCH_DOUT  39
-#define TOUCH_DIN   32 
-#define TOUCH_CS    33
-#define TOUCH_CLK   25
-
-
-
-  // Hardware objects
-DHT dht(DHTPIN, DHTTYPE);
-
-TFT_eSPI lcdDisplay;       // Invoke lcd library
-
-TFT_Touch touch(
-  TOUCH_CS, 
-  TOUCH_CLK, 
-  TOUCH_DIN, 
-  TOUCH_DOUT
-);
-
-TFT_eSPI_Button btn; // invoke button helper 
-
-
-// sensor data 
-float humidity;
-float temperature;
-float avgTemperature;
-
-
-// array variables / temperature storage
-constexpr std::size_t bufferCapacity = 50;
-float temperatureArr[bufferCapacity];
-int buffWrite = 0;
-
-int realReadings = 0;
-
-
-
-
-
-// timing
-unsigned long previousSensorTime= 0;
-const unsigned long sensorInterval = 10000;
-
-unsigned long lastButtonPressTime = 0;
-const unsigned long buttonInterval = 350;
-
-unsigned long previousAvgTime = 0;
-const unsigned long avgInterval = 30000;
-
-
-
-
-
-
-
-
-
-// celsius conversion
-float celsiusToFahrenheit(float celsius) {
-  return( celsius * 1.8 + 32);
-}
-
-
-
-// sensor reading state
-bool isFahrenheit = true; // Flag to indicate if the temperature is in Fahrenheit
-
-bool hasSensorReading = false;
-
-bool hasAverageReading = false;
-
-float getTemperature(){
-  return hasSensorReading ? temperature : NAN;
-}
-
-float getHumidity(){
-  return hasSensorReading ? humidity : NAN;
-}
-
-float getAverageTemp(){
-  return hasAverageReading ? avgTemperature : NAN;
-}
-
-void readSensor(){
-   float newHumidity = dht.readHumidity();
-   float newTemperature = dht.readTemperature();
-
-  // sensor failure check
-  if (isnan(newTemperature) || isnan(newHumidity)){
-    Serial.println("Sensor Reading Failed, check humidity or temp value");
-    hasSensorReading = false;
-  } else {
-    humidity = newHumidity;
-    temperature = newTemperature;
-   
-    
-    temperatureArr[buffWrite] = newTemperature;
-    buffWrite = (buffWrite + 1) % bufferCapacity;
-    hasSensorReading = true;
-
-    if (realReadings < bufferCapacity){
-      realReadings++;
+void drawValue(int y, float value, const char* unit) {
+    // Clear the entire field so shorter values and "--" leave no old digits.
+    display.fillRect(valueColumnX, y, display.width() - valueColumnX,
+                     valueRowHeight, TFT_BLACK);
+    display.setCursor(valueColumnX, y);
+    if (!isfinite(value)) {
+        display.print("--");
+        return;
     }
-    
-    }
-  }
+    display.print(value, 1);
+    display.print(unit);
+}
 
-  
- int tlabelWidth;
- 
+float displayTemperature(float celsius) {
+    return displayFahrenheit ? celsius * 1.8f + 32.0f : celsius;
+}
 
-void updateDisplay(){
-  if (!hasSensorReading){
-    // Temperature
-  lcdDisplay.setCursor(tlabelWidth + 10, 20);
-  lcdDisplay.print("--");
+void updateDisplay() {
+    display.setTextSize(2);
+    display.setTextColor(TFT_GREEN, TFT_BLACK);
+    const char* unit = displayFahrenheit ? "F" : "C";
+    drawValue(20, displayTemperature(getTemperature()), unit);
+    drawValue(40, getHumidity(), "%");
+    drawValue(80, displayTemperature(getAverageTemp()), unit);
 
-  // Humidity
-  lcdDisplay.setCursor(tlabelWidth + 10, 40);
+    display.fillRect(0, 115, display.width(), 32, TFT_BLACK);
+    display.setTextSize(1);
+    display.setCursor(0, 115);
+    display.print("Wi-Fi: ");
+    display.print(getWiFiStatusText());
+    display.setCursor(0, 130);
+    display.print(hasValidSensorReading() ? "Sensor: OK" : "Sensor: unavailable");
+}
 
-  lcdDisplay.print("--");
+void initDisplay() {
+    display.init();
+    display.setRotation(0);
+    display.fillScreen(TFT_BLACK);
+    display.setTextWrap(false);
 
-  
+    // Existing panel-specific calibration for portrait 240x320 operation.
+    // Recalibrate with lib/TFT_Touch/Examples/TFT_Touch_Calibrate_v2 after
+    // changing the panel or orientation; the original measurements are unknown.
+    touch.setCal(3800, 500, 230, 3670, 240, 320, 0);
+    unitButton.initButton(&display, 50, 200, 100, 40, TFT_WHITE, TFT_BLUE,
+                          TFT_WHITE, unitButtonLabel, 2);
+    unitButton.drawButton();
 
-  }
-    else {
-    
-    
-    // Temperature
-    lcdDisplay.setCursor(tlabelWidth + 10, 20);
-    
+    display.setTextSize(2);
+    display.setTextColor(TFT_GREEN, TFT_BLACK);
+    display.setCursor(0, 20);
+    display.print("Temp:");
+    display.setCursor(0, 40);
+    display.print("Humidity:");
+    display.setCursor(0, 80);
+    display.print("Avg temp:");
+}
 
-
-
-      if (isFahrenheit) {
-      lcdDisplay.print(celsiusToFahrenheit(temperature));
-    
-      lcdDisplay.print("F");
+bool handleTouch(unsigned long now) {
+    if (touch.Pressed()) {
+        unitButton.press(unitButton.contains(touch.X(), touch.Y()));
     } else {
-      lcdDisplay.print(temperature);
-    
-      lcdDisplay.print("C");
+        unitButton.press(false);
     }
-
-
-    // Humidity
-    lcdDisplay.setCursor(tlabelWidth + 10, 40);
-
-    lcdDisplay.print(humidity);
-
-    lcdDisplay.print("%");
-
-
-  }
-
-        if (!hasAverageReading){
-          // avgtemp
-        lcdDisplay.setCursor(tlabelWidth + 10, 80);
-        lcdDisplay.print("--");
-        } 
-        else {
-              //Avg temp
-          lcdDisplay.setCursor(tlabelWidth + 10, 80);
-          
-
-              if (isFahrenheit) {
-            lcdDisplay.print(celsiusToFahrenheit(avgTemperature));
-          
-            lcdDisplay.print("F");
-          } else {
-            lcdDisplay.print(avgTemperature);
-          
-            lcdDisplay.print("C");
-          }
-        }
-
+    if (unitButton.justPressed() && now - lastButtonPressMs >= buttonDebounceMs) {
+        lastButtonPressMs = now;
+        displayFahrenheit = !displayFahrenheit;
+        return true;
+    }
+    return false;
 }
-
-void averageTemp(){
-
-  if (realReadings == 0){
-    hasAverageReading = false;
-      return;
-  }
-    else {
-
-  float sum = 0;
-
-  for (int i = 0; i < realReadings; ++i){
-    sum = sum + temperatureArr[i];
-  }
-
-  float avg = sum / realReadings;
-
-    avgTemperature = avg;
-    hasAverageReading = true;
-    
-    }
-  }
-
-
-
+}  // namespace
 
 void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);
-  dht.begin();
-  initWiFi();
-  initRestAPI();
-
-
-// init screen and set rot
-  lcdDisplay.init();
-  lcdDisplay.setRotation(0);
-
-  // screen color black
-  lcdDisplay.fillScreen(TFT_BLACK);
- 
-
-  touch.setCal(3800, 500, 230, 3670, 240, 320, 0); // Set calibration values for the touch screen
-
-  // initialize button with settings and draw
-  btn.initButton(&lcdDisplay, 50, 200, 100, 40, TFT_WHITE, TFT_BLUE, TFT_WHITE, "F/C", 2);
-  btn.drawButton();
-
-
-  // text color and size
-   lcdDisplay.setTextColor(TFT_GREEN, TFT_BLACK);
-  lcdDisplay.setTextSize(2);
-
-
-  int testWidth = lcdDisplay.width();
-  int testHeight = lcdDisplay.height();
-
-  Serial.print("Width: ");
-  Serial.println(testWidth);
-  Serial.print("Height: ");
-  Serial.println(testHeight);
-
-
-  lcdDisplay.setCursor(0, 20);
-  
-   lcdDisplay.print("Temperature: ");
-  
-  lcdDisplay.setCursor(0, 40);
-  
-     lcdDisplay.print("Humidity: ");
-
-
-  lcdDisplay.setCursor(0, 80);
-    lcdDisplay.print("Average Temp: ");
-
-  
-
- 
- tlabelWidth = lcdDisplay.textWidth("Temperature: ");
-  
-
+    Serial.begin(9600);
+    initDisplay();
+    initSensor();
+    initWiFi();
+    initRestAPI();
+    updateDisplay();
 }
 
 void loop() {
-  handleRestAPI();
-  // put your main code here, to run repeatedly:
-  
-  // Store current time in milliseconds.
-  unsigned long currentTime = millis();
+    const unsigned long now = millis();
+    const bool wifiChanged = handleWiFi(now);
+    const bool sensorChanged = handleSensor(now);
+    const bool unitsChanged = handleTouch(now);
+    handleRestAPI();
 
-if ( currentTime - previousSensorTime >= sensorInterval) {
-
-
-  previousSensorTime = currentTime;
-
-  readSensor();
-
+    // Drawing only on state changes leaves time for HTTP requests and input.
+    if (wifiChanged || sensorChanged || unitsChanged) {
+        updateDisplay();
+    }
 }
-
-if (currentTime - previousAvgTime >= avgInterval){
-  previousAvgTime = currentTime;
-
-
-  
-averageTemp();
-  }
-
-
-
-updateDisplay();
-
-
-
-    if (touch.Pressed()){
-      int x = touch.X();
-      int y = touch.Y();
-
-
-      btn.press(btn.contains(x, y));
-    } else {
-      btn.press(false);
-    }
-
-      if (btn.justPressed()){
-        if (currentTime - lastButtonPressTime >= buttonInterval){
-        lastButtonPressTime = currentTime;
-
-        isFahrenheit = !isFahrenheit;
-      }
-    }
-  }
-
-
-

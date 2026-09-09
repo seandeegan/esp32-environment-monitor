@@ -1,8 +1,7 @@
 #pragma once
 
-// example of secrets.h to use for wifi connection
-
+// Copy to secrets.h and fill in your local credentials. Never commit secrets.h.
 namespace Secrets {
-    const char* ssid = "wifi network name goes here";
-    const char* password = "wifi network password goes here";
+    constexpr const char* ssid = "wifi network name goes here";
+    constexpr const char* password = "wifi network password goes here";
 }
