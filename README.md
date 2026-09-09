@@ -165,7 +165,7 @@ I also tested the project on the actual hardware, including:
 
 The original version of this project was developed as a learning project while I was getting more comfortable with embedded C++ and the ESP32.
 
-After the core functionality was working, I used an AI coding agent during the final cleanup stage to help with mechanical refactoring, file organization, comments, and initial documentation. I reviewed the changes afterward and tested the firmware to make sure the refactor did not change the intended behavior.
+After the core project was working, I used an AI coding agent during the final cleanup stage to help refactor the code, improve error and connection handling, add tests, organize files, and create initial documentation. I reviewed the changes afterward and tested the firmware to make sure everything still behaved as expected.
 
 I kept the AI-assisted cleanup in a separate commit so the development history and original implementation process remain visible.
 
