@@ -6,6 +6,8 @@ The ESP32 reads the sensor every 10 seconds, displays the current values on-scre
 
 The touchscreen can switch the displayed temperature between Celsius and Fahrenheit. The API always returns temperature values in Celsius.
 
+![ESP32 Environment Monitor](images/finished01.jpg)
+
 ## Features
 
 * DHT22 temperature and humidity readings
@@ -18,9 +20,13 @@ The touchscreen can switch the displayed temperature between Celsius and Fahrenh
 * Automatic Wi-Fi retry if the connection is lost
 * Basic handling for invalid or disconnected sensor readings
 
+![Touchscreen display showing live sensor readings](images/closeup2.jpg)
+
 ## Hardware
 
 The project currently targets an ESP32 using the Arduino framework through PlatformIO.
+
+![ESP32 hardware and wiring](images/back.jpg)
 
 | Signal                         | ESP32 GPIO   |
 | ------------------------------ | ------------ |
